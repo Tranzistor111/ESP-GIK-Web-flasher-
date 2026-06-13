@@ -1,7 +1,7 @@
 const FIRMWARE_FILES = [
     {
         path: "./sketch_may24b.ino.bootloader.bin",
-        address: 0x0000,
+        address: 0x1000,
         name: 'Bootloader'
     },
     {
