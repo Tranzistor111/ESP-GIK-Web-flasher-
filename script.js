@@ -1,16 +1,16 @@
 const FIRMWARE_FILES = [
     {
-        path: "./sketch_may24b.ino.bootloader.bin",
-        address: 0x1000,
+        path: "sketch_aug15a.ino.bootloader.bin",
+        address: 0x0000,
         name: 'Bootloader'
     },
     {
-        path: "./sketch_may24b.ino.partitions.bin",
+        path: "sketch_aug15a.ino.partitions.bin",
         address: 0x8000,
         name: 'Partitions'
     },
     {
-        path: "./sketch_may24b.ino.bin",
+        path: "sketch_aug15a.ino.bin",
         address: 0x10000,
         name: 'Firmware'
     }
@@ -66,16 +66,40 @@ async function loadAllFirmwareFiles() {
     statusDiv.className = 'status progress';
     
     try {
-        for (const fileConfig of FIRMWARE_FILES) {
-            const data = await loadFile(fileConfig);
-            firmwareData[fileConfig.name] = {
-                data: data,
-                address: fileConfig.address
-            };
-            console.log(`${fileConfig.name}: ${data.length} байт загружено`);
+        const results = await Promise.allSettled(
+            FIRMWARE_FILES.map(file => loadFile(file))
+        );
+        
+        let loadedCount = 0;
+        const missingFiles = [];
+        
+        FIRMWARE_FILES.forEach((file, index) => {
+            if (results[index].status === 'fulfilled') {
+                firmwareData[file.name] = {
+                    data: results[index].value,
+                    address: file.address
+                };
+                loadedCount++;
+                console.log(`${file.name}: ${results[index].value.length} байт загружено`);
+            } else {
+                missingFiles.push(file.name);
+                console.warn(`Не удалось загрузить ${file.name}:`, results[index].reason);
+            }
+        });
+        
+        if (loadedCount === FIRMWARE_FILES.length) {
+            statusDiv.textContent = '✓ Файлы прошивки загружены';
+            statusDiv.className = 'status connected';
+        } else if (loadedCount > 0) {
+            statusDiv.textContent = `⚠ Загружено ${loadedCount} из ${FIRMWARE_FILES.length} файлов`;
+            statusDiv.className = 'status progress';
+            console.log('Отсутствующие файлы:', missingFiles);
+        } else {
+            statusDiv.textContent = '✗ Файлы прошивки не найдены. Проверьте, что они загружены в репозиторий';
+            statusDiv.className = 'status error';
+            console.error('Все файлы отсутствуют. Список файлов:', missingFiles);
         }
-        statusDiv.textContent = '✓ Файлы прошивки загружены';
-        statusDiv.className = 'status connected';
+        
     } catch (error) {
         statusDiv.textContent = `✗ Ошибка загрузки: ${error.message}`;
         statusDiv.className = 'status error';
@@ -85,22 +109,38 @@ async function loadAllFirmwareFiles() {
 async function loadFile(fileConfig) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('GET', fileConfig.path, true);
+        
+        const cleanPath = fileConfig.path.replace('./', '');
+        
+        console.log(`Загрузка файла: ${cleanPath}`);
+        
+        xhr.open('GET', cleanPath, true);
         xhr.responseType = 'arraybuffer';
         
         xhr.onload = () => {
-            if (xhr.status === 200 || xhr.status === 0) {
+            console.log(`Статус загрузки ${cleanPath}:`, xhr.status);
+            
+            if (xhr.status === 200) {
                 const uint8Array = new Uint8Array(xhr.response);
+                console.log(`Файл ${cleanPath} загружен: ${uint8Array.length} байт`);
                 resolve(uint8Array);
             } else {
-                reject(new Error(`Ошибка загрузки ${fileConfig.path}: ${xhr.status}`));
+                console.error(`Ошибка загрузки ${cleanPath}: статус ${xhr.status}`);
+                reject(new Error(`Файл ${cleanPath} не найден (ошибка ${xhr.status})`));
             }
         };
         
         xhr.onerror = () => {
-            reject(new Error(`Не удалось загрузить ${fileConfig.path}`));
+            console.error(`Ошибка сети при загрузке ${cleanPath}`);
+            reject(new Error(`Не удалось загрузить ${cleanPath}. Проверьте, что файл существует в репозитории`));
         };
         
+        xhr.ontimeout = () => {
+            console.error(`Таймаут при загрузке ${cleanPath}`);
+            reject(new Error(`Таймаут при загрузке ${cleanPath}`));
+        };
+        
+        xhr.timeout = 10000; 
         xhr.send();
     });
 }
@@ -262,4 +302,5 @@ navigator.serial.addEventListener('disconnect', () => {
     updateProgress(0);
     statusDiv.textContent = '✗ Устройство отключено';
     statusDiv.className = 'status error';
+    console.log('Устройство отключено');
 });
