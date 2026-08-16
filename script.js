@@ -21,10 +21,6 @@ const flashBtn = document.getElementById('flashBtn');
 const statusDiv = document.getElementById('status');
 const connectScreen = document.getElementById('connectScreen');
 const flashScreen = document.getElementById('flashScreen');
-const progressContainer = document.getElementById('progressContainer');
-const progressFill = document.getElementById('progressFill');
-const progressText = document.getElementById('progressText');
-const progressDetails = document.getElementById('progressDetails');
 const fileList = document.getElementById('fileList');
 
 let port = null;
@@ -140,15 +136,9 @@ async function loadFile(fileConfig) {
             reject(new Error(`Таймаут при загрузке ${cleanPath}`));
         };
         
-        xhr.timeout = 10000; 
+        xhr.timeout = 10000;
         xhr.send();
     });
-}
-
-function updateProgress(percent, details = '') {
-    progressFill.style.width = percent + '%';
-    progressText.textContent = percent + '%';
-    if (details) progressDetails.textContent = details;
 }
 
 flashBtn.addEventListener('click', async () => {
@@ -160,12 +150,9 @@ flashBtn.addEventListener('click', async () => {
     
     try {
         flashBtn.disabled = true;
-        progressContainer.style.display = 'block';
-        updateProgress(0);
         statusDiv.className = 'status progress';
 
         statusDiv.textContent = 'Синхронизация...';
-        updateProgress(5, 'Синхронизация с ESP32-S3');
         await syncESP32();
         
         const fileNames = Object.keys(firmwareData);
@@ -175,20 +162,17 @@ flashBtn.addEventListener('click', async () => {
             const name = fileNames[i];
             const fileInfo = firmwareData[name];
             
-            const startPercent = 10 + (i * (85 / totalFiles));
-            const endPercent = 10 + ((i + 1) * (85 / totalFiles));
-            
-            statusDiv.textContent = `Прошивка ${name}...`;
-            await flashData(fileInfo.data, fileInfo.address, (progress) => {
-                const total = Math.round(startPercent + (progress * (endPercent - startPercent) / 100));
-                updateProgress(total, `${name}: ${Math.round(progress)}%`);
-            });
+            statusDiv.textContent = `Прошивка ${name}... (${i + 1}/${totalFiles})`;
+            await flashData(fileInfo.data, fileInfo.address, () => {});
         }
 
-        updateProgress(100, 'Перезагрузка...');
-        statusDiv.textContent = '✓ Прошивка завершена!';
+        statusDiv.textContent = '✓ Прошивка завершена! Устройство перезагружается...';
         statusDiv.className = 'status connected';
         await resetESP32();
+        
+        setTimeout(() => {
+            statusDiv.textContent = '✓ Прошивка успешно завершена!';
+        }, 2000);
         
     } catch (error) {
         statusDiv.textContent = `✗ Ошибка: ${error.message}`;
@@ -196,7 +180,6 @@ flashBtn.addEventListener('click', async () => {
         console.error(error);
     } finally {
         flashBtn.disabled = false;
-        setTimeout(() => updateProgress(0), 3000);
     }
 });
 
@@ -230,8 +213,6 @@ async function flashData(data, address, progressCallback) {
         await writer.write(packet);
         
         offset += chunk.length;
-        const percent = Math.round((offset / data.length) * 100);
-        progressCallback(Math.min(percent, 100));
         
         await new Promise(r => setTimeout(r, 10));
     }
@@ -298,8 +279,6 @@ navigator.serial.addEventListener('disconnect', () => {
     firmwareData = {};
     flashScreen.style.display = 'none';
     connectScreen.style.display = 'block';
-    progressContainer.style.display = 'none';
-    updateProgress(0);
     statusDiv.textContent = '✗ Устройство отключено';
     statusDiv.className = 'status error';
     console.log('Устройство отключено');
